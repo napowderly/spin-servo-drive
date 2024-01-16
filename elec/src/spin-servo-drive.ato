@@ -1,2 +1,177 @@
+interfaces contain signals
+modules contain interfaces. modules, components, equations, traits
+traits contain interfaces and equations
+components contain interfaces, signals, pins, traits
+
+
+module BuckConverter:
+    """
+    Top level file, contains the 'topological' description of the module.
+    """
+    power_in = new PowerIn
+    power_out = new PowerOut
+
+component XT30:
+    power_input = new PowerInput
+    power_input.power_out.vcc ~ pin 1
+    power_input.power_out.gnd ~ pin 2
+
+module PowerInput:
+    """
+    Top level file, contains the 'topological' description of the module.
+    """
+    power_in = new PowerOut
+    power_out = new PowerOut
+
+module BulkCapacitance:
+    """
+    Top level file, contains the 'topological' description of the module.
+    """
+    # attach to power interface you want to buffer
+    power = new PowerIn
+
 module SpinServoDrive:
-    signal gnd
+    """
+    Top level file, contains the 'topological' description of the module.
+    """
+    # Power input connector
+    power = new PowerInput
+
+    # Input capacitance - for motor output and power supplies
+    input_caps = new BulkCapacitance
+    power.power_out ~ input_caps.power
+
+    # Takes power from power input
+    buck = new BuckConverter
+    power_in.power ~ buck.power_in
+
+    # Output capacitance - regulated output
+
+    # micro controller
+    mcu = new MicroController
+
+module GateDriver:
+    logic_input = new Signal
+    output = new Signal
+    power = new Power
+
+module HalfBridge:
+    hs_fet = new NFET
+    ls_fet = new NFET
+    out = new Signal
+    power = new Power
+
+module DifferentialAmplifier:
+    in_pos = new Signal
+    in_neg = new Signal
+    out = new Signal
+
+module CurrentSensor:
+    shunt = new Resistor
+    sense = new Signal
+    amplifier = new DifferentialAmplifier
+
+    amplifier.in_pos ~ shunt.p1
+    amplifier.in_neg ~ shunt.p2
+
+    amplifier.out ~ sense
+
+    # power stage
+module Phase:
+    power_input = new Power
+    hs_gate_driver = new GateDriver
+    ls_gate_driver = new GateDriver
+    half_bridge = new HalfBridge
+    current_sensor = new CurrentSensor
+
+    # connect up traits
+    hs_gate_driver.power ~ resistor gate_drive_power
+    ls_gate_driver.power ~ gate_drive_power
+
+    power_input.vcc ~ half_bridge.power ~ current_sensor.shunt ~ power_input.gnd
+
+    half_bridge.out ~ output
+    half_bridge.hs_gate ~ hs_gate_driver.output
+    half_bridge.ls_gate ~ ls_gate_driver.output
+
+
+module SomeRegulator:
+    trait regulator
+    fet = new NFET
+    regulator.power_input.vcc ~ fet.drain
+    regulator.power_output.vcc ~ fet.source
+    regulator.power.gnd
+
+module HalfBridge:
+    hs_fet = new NFET
+    ls_fet = new NFET
+    half_bridge.power_input.vcc ~ hs_fet.drain
+    half_bridge.power_output.vcc ~ ls_fet.source
+    half_bridge.power.gnd
+
+trait NFET:
+    drain = new Signal
+    source = new Signal
+    gate = new Signal
+
+trait OpAmp:
+    in_pos = new Signal
+    in_neg = new Signal
+    out = new Signal
+
+trait Resistor:
+    p1 = new Signal
+    p2 = new Signal
+    var resistance
+    var voltage
+    var current
+    eqn: voltage = p1.voltage - p2.voltage
+    eqn: voltage = current * resistance
+
+trait LED:
+    voltage = 3.3V
+
+module IndicatorLED:
+    power = new Power
+    led = new LED
+    resistor = new Resistor
+
+    eqn: power.voltage = led.voltage + resistor.voltage
+    eqn: led.current = resistor.voltage / resistor.resistance
+
+indicatorLed = new IndicatorLED
+indicatorLed.led.current = 20mA
+
+trait Regulator:
+    power_input = new Power
+    power_output = new Power
+
+    # Properties
+    var max_voltage_input
+    var min_voltage_input
+    var max_voltage_output
+    var min_voltage_output
+
+trait LDO from Regulator:
+    # some governing equations
+    eqn: power_input.voltage < (power_output.voltage - dropout) # LDO
+    eqn: power_input.current = power_output.current
+
+trait BuckConverter from Regulator:
+    # some governing equations
+    var switching_frequency
+    eqn: power_input.voltage =< power_output.voltage # Buck
+    eqn: power_input.current * power_input.voltage = (power_output.current * power_output.voltage) * efficency
+
+trait BoostConverter from Regulator:
+    # some governing equations
+    eqn: power_input.voltage => power_output.voltage # Boost
+    eqn: power_input.current * power_input.voltage = (power_output.current * power_output.voltage) * efficency
+
+trait BuckBoostConverter from Regulator:
+    # some governing equations
+    # eqn: power_input.voltage = power_output.voltage # BuckBoost
+    eqn: power_input.voltage < max_voltage_input
+    eqn: power_input.voltage > min_voltage_input
+    eqn: power_input.current * power_input.voltage = (power_output.current * power_output.voltage) * efficency
+
